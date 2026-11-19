@@ -571,6 +571,13 @@ input,select{caret-color:var(--brand-roxo)}
 .ficha3 li .qn{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--brand-claro);border:1.5px solid var(--brand-roxo);color:var(--roxo-d);font-size:11.5px;font-weight:800;flex:none}
 .hero3-photo img{filter:saturate(1.05) contrast(1.03)}
 
+/* Mobile only: the "100% online" seal sat at top:96px over the person.
+   Park it on the top-left shoulder of the arch, outside the face and
+   clear of the Qualificação card. ≥700px (tablet + desktop) unchanged. */
+@media (max-width:699px){
+  .hero3-seal{top:14px;left:0;right:auto}
+}
+
 /* ---------- faixa de credenciais ---------- */
 .cred{background:var(--navy)}
 .cred li{padding-left:8px}
