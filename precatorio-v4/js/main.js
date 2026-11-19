@@ -9,7 +9,7 @@ var CONFIG = {
   variant: "frente-precatorio-v4",   // valor de lp_variant no payload/Pipedrive
   headline: "A",              // "A" | "B"  (A é o padrão; ?headline=B alterna)
   headlines: {
-      "A": "Precatório sem data para pagar? Antecipe seus honorários com cessão documentada.",
+      "A": "Precatório sem data para receber? Antecipe seus honorários com cessão documentada.",
       "B": "Precatório sem data? Antecipe seus honorários."
   },
   lpFrente: "precatorio",              // valor do campo oculto lp_frente (payload e form_submit)
