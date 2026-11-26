@@ -24,9 +24,9 @@ var CONFIG = {
 
   // --- Pipedrive: PREPARADO, mas DESLIGADO ---
   pipedrive: {
-    enabled: false,           // false = o fluxo termina localmente (payload no console / window.DigCapLP.lastPayload)
-    endpoint: "",             // URL de webhook/proxy. NUNCA colocar token do Pipedrive aqui (o token fica no servidor).
-    timeoutMs: 10000
+    enabled: true,            // envio ligado: o lead vai para a planilha da DigCap (Apps Script)
+    endpoint: "https://script.google.com/macros/s/AKfycbzURALfSlwxnTNogMBv2-FlG4Dkuw05Zjnzc4C8iVgpPb9CaToLQE1VtR0Ftie8E3So/exec", // URL /exec do Aplicativo da Web (sem token)
+    timeoutMs: 20000          // Apps Script pode demorar no primeiro acesso (partida a frio)
   },
 
   // --- Rastreamento ---
@@ -494,14 +494,20 @@ var PIPEDRIVE_FIELD_MAP = {
     var t = ctrl ? setTimeout(function () { ctrl.abort(); }, CONFIG.pipedrive.timeoutMs) : null;
     return fetch(CONFIG.pipedrive.endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(envelope),
+      redirect: "follow",
       signal: ctrl ? ctrl.signal : undefined,
       credentials: "omit"
     }).then(function (res) {
       if (t) clearTimeout(t);
       if (!res.ok) throw new Error("HTTP " + res.status);
-      return { ok: true, mode: "pipedrive", status: res.status };
+      return res.text().then(function (text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (err) { data = null; }
+        if (data && data.ok === false) throw new Error(data.error || "envio recusado");
+        return { ok: true, mode: "pipedrive", status: res.status };
+      });
     });
   }
 
