@@ -1,11 +1,11 @@
 /* ==========================================================================
    DigCap LP — frente "precatorio", versão 4 (marca oficial) (preview noindex). Mesmo rastreamento do site principal.
    Todos os padrões trocáveis estão no objeto CONFIG logo abaixo.
-   Nomes de campos e eventos: /workspace/clientes/digcap/conversoes-gtm.md
+   Nomes de campos e eventos: ver o objeto CONFIG e o PIPEDRIVE_FIELD_MAP abaixo.
    ========================================================================== */
 
 var CONFIG = {
-  // --- Padrões pedidos pelo Gestor de Projetos (trocáveis) ---
+  // --- Padrões trocáveis ---
   variant: "frente-precatorio-v4",   // valor de lp_variant no payload/Pipedrive
   headline: "A",              // "A" | "B"  (A é o padrão; ?headline=B alterna)
   headlines: {
@@ -13,16 +13,16 @@ var CONFIG = {
       "B": "Precatório sem data? Antecipe seus honorários."
   },
   lpFrente: "precatorio",              // valor do campo oculto lp_frente (payload e form_submit)
-  stepLabels: { s1: "Passo 1 de 2: qualificação e contato", s2: "Passo 2 de 2: processo (opcional)" },
+  stepLabels: { s1: "Passo 1 de 2: contato e OAB", s2: "Passo 2 de 2: sobre o processo" },
   defaultOrder: ["hero", "caixa", "para-quem-e", "como-funciona", "seguro", "quem-e-a-digcap", "qualificacao", "faq", "cta-final"],   // ordem padrão das seções (?ordem=a,b,c ou DigCapLP.setOrder([...]))
-  oab: "optional",            // "optional" | "required"  (decisão final do Luiz)
+  oab: "required",            // "required" (padrão desde 26/11: advogado informa número e UF da OAB) | "optional"
   whatsapp: {
     enabled: false,           // WhatsApp DESLIGADO por padrão (CTA único = formulário)
     number: "",               // número oficial, só dígitos com DDI. Vazio = sem WhatsApp.
     message: ""               // mensagem pré-preenchida opcional (sem dados pessoais)
   },
 
-  // --- Pipedrive: PREPARADO, mas DESLIGADO ---
+  // --- Envio do lead (objeto mantém o nome "pipedrive" por compatibilidade): LIGADO, planilha Google (Apps Script) ---
   pipedrive: {
     enabled: true,            // envio ligado: o lead vai para a planilha da DigCap (Apps Script)
     endpoint: "https://script.google.com/macros/s/AKfycbzURALfSlwxnTNogMBv2-FlG4Dkuw05Zjnzc4C8iVgpPb9CaToLQE1VtR0Ftie8E3So/exec", // URL /exec do Aplicativo da Web (sem token)
@@ -34,7 +34,7 @@ var CONFIG = {
   formId: "lp_advogados",     // conversoes-gtm.md §4.1
   leadSource: "lp_advogados", // conversoes-gtm.md §4.1
   consentVersion: "lp-frentes-v4-rascunho-2026-11-18", // versão (e data) do texto de consentimento; trocar junto com o texto
-  clickIdCookieDays: 90,      // validade dos cookies first-party de click id (gclid, fbclid, wbraid, gbraid, *_last) e do dc_attr (decisão do bot DigCap)
+  clickIdCookieDays: 90,      // validade dos cookies first-party de click id (gclid, fbclid, wbraid, gbraid, *_last) e do dc_attr
   clickIdPolicy: "first",     // origem = primeiro clique ("first"). O último clique é guardado À PARTE em gclid_last, fbclid_last, wbraid_last, gbraid_last. "last" = o clique novo sobrescreve também o primeiro.
   cookiesRequireConsent: true, // true = NENHUM cookie/localStorage/sessionStorage é escrito antes do consentimento (valores só em memória).
   cookieConsentTrigger: "submit", // quando considerar o consentimento dado: "submit" = envio válido do passo 2 com a caixa marcada (padrão) | "checkbox" = ao marcar a caixa (desmarcar remove os cookies gravados nesta visita)
@@ -44,7 +44,7 @@ var CONFIG = {
 
   // --- Modo staging ---
   internalMode: false,        // true = faixa interna e notas de revisão (.review-note).
-  allowUrlOverrides: true,    // permite ?headline=B&oab=required&whatsapp=on&passo=2 (só staging). Na publicação: false.
+  allowUrlOverrides: true,    // permite ?headline=B&whatsapp=on&passo=2 (só staging; a OAB não tem mais override por URL). Na publicação: false.
   debugLog: false             // loga o payload no console (contém dados pessoais do teste). Na publicação: false.
 };
 
@@ -60,7 +60,7 @@ var CONFIG = {
 })();
 
 /* Mapeamento campo do formulário -> campo do Pipedrive (conversoes-gtm.md §5).
-   Em 12/11/2026 o bot DigCap definiu estes nomes como o padrão (incluindo os *_last, sugeridos por esta LP).
+   Em 12/11/2026 estes nomes foram definidos como o padrão (incluindo os *_last, sugeridos por esta LP).
    confirmed:false ficaria em _unconfirmed_fields do envelope, se algum campo novo ainda não tiver decisão. */
 var PIPEDRIVE_FIELD_MAP = {
   nome:             { pipedrive: "person.name",          confirmed: true },
@@ -70,7 +70,6 @@ var PIPEDRIVE_FIELD_MAP = {
   o_que_antecipar:  { pipedrive: "o_que_antecipar",      confirmed: false },
   fase:             { pipedrive: "fase_do_processo",     confirmed: true },
   qtd_processos:    { pipedrive: "qtd_processos",        confirmed: false },
-  ente_devedor:     { pipedrive: "ente_devedor",         confirmed: false },
   lp_frente:        { pipedrive: "lp_frente",            confirmed: false },
   headline_variant: { pipedrive: "headline_variant",     confirmed: false },
   utm_source:       { pipedrive: "utm_source",           confirmed: true },
@@ -126,6 +125,59 @@ var PIPEDRIVE_FIELD_MAP = {
 
   /* ---------- Utilidades ---------- */
   function digits(v) { return (v || "").replace(/\D+/g, ""); }
+  /* Número CNJ (Resolução CNJ 65/2008): NNNNNNN-DD.AAAA.J.TR.OOOO (20 dígitos). */
+  function formatCNJ(d) {
+    d = digits(d).slice(0, 20);
+    var parts = [[0, 7, ""], [7, 9, "-"], [9, 13, "."], [13, 14, "."], [14, 16, "."], [16, 20, "."]], out = "";
+    for (var i = 0; i < parts.length; i++) {
+      if (d.length > parts[i][0]) out += parts[i][2] + d.slice(parts[i][0], parts[i][1]);
+    }
+    return out;
+  }
+  function mod97(numStr) {        // resto por 97 em blocos (sem BigInt, funciona em navegadores antigos)
+    var r = 0;
+    for (var i = 0; i < numStr.length; i += 7) r = parseInt(String(r) + numStr.slice(i, i + 7), 10) % 97;
+    return r;
+  }
+  function cnjCheck(raw) {        // "" = válido; senão, o código do erro
+    var v = String(raw || "").trim();
+    if (!v) return "";
+    if (/[^\d.\-\s]/.test(v)) return "letras";
+    var d = digits(v);
+    if (d.length < 20) return "curto";
+    if (d.length > 20) return "longo";
+    var ano = parseInt(d.slice(9, 13), 10), j = parseInt(d.slice(13, 14), 10);
+    if (ano < 1990 || ano > new Date().getFullYear() || j < 1 || j > 9) return "estrutura";
+    // DV: NNNNNNN AAAA J TR OOOO DD  mod 97 == 1  (equivale a DD = 98 - (N A J TR O 00 mod 97))
+    if (mod97(d.slice(0, 7) + d.slice(9, 20) + d.slice(7, 9)) !== 1) return "dv";
+    return "";
+  }
+  function oabCheck(num, uf) {    // "" = válido
+    var n = String(num || "").toUpperCase().replace(/[\s.\-\/]/g, "");
+    if (!n && !uf) return "vazio";
+    if (!n) return "numero";
+    if (!/^\d{3,7}[ABEN]?$/.test(n)) return "formato";
+    if (!uf) return "uf";
+    return "";
+  }
+  var MSG = {
+    procLetras: "Use só números: o número do processo não tem letras.",
+    procCurto: function (n) { return "Faltam dígitos: o número do processo tem 20 dígitos (faltam " + n + ")."; },
+    procLongo: "O número do processo tem 20 dígitos. Confira se colou a mais.",
+    procEstrutura: "Número inválido, confira o ano e o segmento (formato 0000000-00.AAAA.J.TR.0000).",
+    procDv: "Número inválido, confira os dígitos.",
+    oabVazio: "Informe o número da OAB e a UF.",
+    oabNumero: "Informe o número da OAB.",
+    oabFormato: "Número da OAB inválido: use de 3 a 7 dígitos (ex.: 123456).",
+    oabUf: "Selecione a UF da OAB."
+  };
+  function showFieldError(fieldId, msg) {
+    var f = document.getElementById(fieldId);
+    if (!f) return;
+    var p = f.querySelector(".field-error");
+    if (p && msg) p.textContent = msg;
+    f.classList.add("is-invalid");
+  }
   function emailOk(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v || ""); }
   function getCookie(name) {
     var parts = document.cookie ? document.cookie.split("; ") : [];
@@ -263,7 +315,7 @@ var PIPEDRIVE_FIELD_MAP = {
   var cfgHeadline = CONFIG.headline, cfgOab = CONFIG.oab, cfgWa = CONFIG.whatsapp.enabled;
   if (CONFIG.allowUrlOverrides) {
     if (params.get("headline")) cfgHeadline = params.get("headline").toUpperCase();
-    if (params.get("oab") === "required" || params.get("oab") === "optional") cfgOab = params.get("oab");
+    // OAB: sem override por URL desde 26/11 (evita desligar a obrigatoriedade com ?oab=optional).
     if (params.get("whatsapp") === "on") cfgWa = true;
     if (params.get("whatsapp") === "off") cfgWa = false;
   }
@@ -331,7 +383,7 @@ var PIPEDRIVE_FIELD_MAP = {
     if (bar) bar.style.width = (step === "2" || step === "thanks") ? "100%" : "";
     if (opts.focus === false) return;
     var target = null;
-    if (step === "2") target = document.getElementById("processo");
+    if (step === "2") target = document.getElementById("fase");
     else if (step === "blocked") target = document.getElementById("step-blocked");
     else if (step === "thanks") target = document.getElementById("step-thanks");
     else if (step === "1") target = document.getElementById("nome");
@@ -357,13 +409,18 @@ var PIPEDRIVE_FIELD_MAP = {
     });
     var proc = document.getElementById("processo");
     if (proc) proc.addEventListener("input", function () {
-      var d = digits(proc.value).slice(0, 20), out = d;
-      if (d.length > 7)  out = d.slice(0,7) + "-" + d.slice(7);
-      if (d.length > 9)  out = d.slice(0,7) + "-" + d.slice(7,9) + "." + d.slice(9);
-      if (d.length > 13) out = d.slice(0,7) + "-" + d.slice(7,9) + "." + d.slice(9,13) + "." + d.slice(13);
-      if (d.length > 14) out = d.slice(0,7) + "-" + d.slice(7,9) + "." + d.slice(9,13) + "." + d.slice(13,14) + "." + d.slice(14);
-      if (d.length > 16) out = d.slice(0,7) + "-" + d.slice(7,9) + "." + d.slice(9,13) + "." + d.slice(13,14) + "." + d.slice(14,16) + "." + d.slice(16);
-      proc.value = out;
+      // Filtro na digitação/colagem: só dígitos entram; a máscara CNJ é refeita a cada mudança.
+      var hadLetters = /[^\d.\-\s]/.test(proc.value);
+      proc.value = formatCNJ(digits(proc.value).slice(0, 20));
+      // Aviso só quando sobra número incompleto (colar "Processo nº 0001234-..." completo não gera aviso).
+      if (hadLetters && digits(proc.value).length < 20) setTimeout(function () { showFieldError("field-processo", MSG.procLetras); }, 0);
+    });
+    var oabIn = document.getElementById("oab");
+    if (oabIn) oabIn.addEventListener("input", function () {
+      // OAB: só dígitos + 1 letra final opcional (A, B, E ou N, inscrição suplementar etc.).
+      var v = oabIn.value.toUpperCase().replace(/[^0-9ABEN]/g, "");
+      var m = v.match(/^(\d{0,7})([ABEN]?)/);
+      oabIn.value = m ? m[1] + (m[1].length ? m[2] : "") : "";
     });
   }
 
@@ -392,27 +449,35 @@ var PIPEDRIVE_FIELD_MAP = {
     var oab = document.getElementById("oab"), oabUf = document.getElementById("oab_uf");
     var adv = document.querySelector("input[name='e_advogado']:checked");
     var oque = document.querySelector("input[name='o_que_antecipar']:checked");
-    var qtd = document.querySelector("input[name='qtd_processos']:checked");
-    var fase = document.getElementById("fase");
+    // OAB: obrigatória para quem marcou "Sim" (com CONFIG.oab = "required"); se preenchida, o formato é sempre conferido.
+    var oabErr = oabCheck(oab && oab.value, oabUf && oabUf.value);
+    if (oabErr === "vazio" && !(requiredOab && adv && adv.value === "sim")) oabErr = "";
     var bad = [
       markInvalid("field-nome", !document.getElementById("nome").value.trim()),
       markInvalid("field-email", !emailOk(document.getElementById("email").value.trim())),
       markInvalid("field-telefone", digits(document.getElementById("telefone").value).length < 10),
       markInvalid("field-advogado", !adv),
-      markInvalid("field-oab", requiredOab && (!oab.value.trim() || !oabUf.value)),
-      markInvalid("field-o-que", !oque),
-      markInvalid("field-fase", !fase || !fase.value),
-      markInvalid("field-qtd", !qtd)
+      markInvalid("field-oab", !!oabErr),
+      markInvalid("field-o-que", !oque)
     ];
+    if (oabErr) showFieldError("field-oab", { vazio: MSG.oabVazio, numero: MSG.oabNumero, formato: MSG.oabFormato, uf: MSG.oabUf }[oabErr]);
     return bad.indexOf(true) === -1;
   }
   function validateStep2() {
     var proc = document.getElementById("processo");
-    var procDigits = digits(proc && proc.value).length;
+    var qtd = document.querySelector("input[name='qtd_processos']:checked");
+    var fase = document.getElementById("fase");
+    var procErr = cnjCheck(proc && proc.value);
     var bad = [
-      markInvalid("field-processo", procDigits > 0 && procDigits !== 20),
+      markInvalid("field-fase", !fase || !fase.value),
+      markInvalid("field-qtd", !qtd),
+      markInvalid("field-processo", !!procErr),
       markInvalid("field-consentimento", !document.getElementById("consentimento").checked)
     ];
+    if (procErr) {
+      var falta = 20 - digits(proc.value).length;
+      showFieldError("field-processo", { letras: MSG.procLetras, curto: MSG.procCurto(falta), longo: MSG.procLongo, estrutura: MSG.procEstrutura, dv: MSG.procDv }[procErr]);
+    }
     return bad.indexOf(true) === -1;
   }
 
@@ -432,14 +497,13 @@ var PIPEDRIVE_FIELD_MAP = {
       email: val("email").trim(),
       telefone: val("telefone"),
       e_advogado: adv ? adv.value : "",
-      oab: val("oab").trim(),
+      oab: val("oab").toUpperCase().replace(/[\s.\-\/]/g, ""),
       oab_uf: val("oab_uf"),
       o_que_antecipar: oque ? oque.value : "",
       fase: val("fase"),
       qtd_processos: qtd ? qtd.value : "",
-      // passo 2 (opcionais) + consentimento
-      processo: val("processo"),
-      ente_devedor: val("ente"),
+      // passo 2: fase e quantidade (obrigatórias) + número do processo (opcional, normalizado com a máscara CNJ) + consentimento
+      processo: digits(val("processo")).length === 20 ? formatCNJ(val("processo")) : "",
       consentimento: document.getElementById("consentimento").checked,
       lp_frente: CONFIG.lpFrente,
       headline_variant: hv,
@@ -677,7 +741,7 @@ var PIPEDRIVE_FIELD_MAP = {
 
   window.DigCapLP = {
     CONFIG: CONFIG, PIPEDRIVE_FIELD_MAP: PIPEDRIVE_FIELD_MAP, HEADLINES: HEADLINES,
-    setOrder: setOrder, setHeadline: setHeadline, setOab: setOab, setWhatsapp: setWhatsapp, setStep: setStep,
+    setOrder: setOrder, setHeadline: setHeadline, cnjCheck: cnjCheck, oabCheck: oabCheck, formatCNJ: formatCNJ, setOab: setOab, setWhatsapp: setWhatsapp, setStep: setStep,
     lastPayload: null, lastEnvelope: null, hasConsent: function () { return consentGiven; }
   };
 

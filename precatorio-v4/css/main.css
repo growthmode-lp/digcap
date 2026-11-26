@@ -696,3 +696,20 @@ input,select{caret-color:var(--brand-roxo)}
 .status-card h1{font-family:var(--font-h)}
 
 @media (prefers-reduced-motion:reduce){.fcard4,.pillar4,.step{transition:none}.fcard4:hover,.step:hover{transform:none}}
+
+/* ---------- Selo Wow (arquivo oficial do site da DigCap) ---------- */
+.wow-logo{width:auto;height:26px;max-width:min(100%,220px);flex:none;display:block}
+.cred-wow{flex-wrap:wrap;align-items:center;gap:8px 12px}
+.badge-wow{flex-wrap:wrap;align-items:center;row-gap:6px}
+.badge-wow .wow-logo{height:20px;max-width:min(100%,180px)}
+.trust-wow{align-items:center;flex-wrap:wrap;gap:10px 12px}
+.trust-wow .wow-logo{height:22px;max-width:min(100%,200px)}
+@media (max-width:699px){
+  .cred-wow .wow-logo{height:22px;max-width:100%}
+  .badge-wow .wow-logo{height:18px}
+  .trust-wow .wow-logo{height:20px}
+}
+
+/* Ajustes do formulário (26/11): dica abaixo dos campos OAB e processo */
+.field-hint{color:var(--ink-3);font-size:13px;line-height:1.4;margin-top:6px}
+.field.is-invalid .field-hint{display:none}
