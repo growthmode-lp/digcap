@@ -13,9 +13,8 @@ var CONFIG = {
       "B": "Precatório sem data? Antecipe seus honorários."
   },
   lpFrente: "precatorio",              // valor do campo oculto lp_frente (payload e form_submit)
-  stepLabels: { s1: "Passo 1 de 2: contato e OAB", s2: "Passo 2 de 2: sobre o processo" },
+  stepLabels: { s1: "Passo 1 de 2: contato e perfil", s2: "Passo 2 de 2: sobre o processo" },
   defaultOrder: ["hero", "caixa", "para-quem-e", "como-funciona", "seguro", "quem-e-a-digcap", "qualificacao", "faq", "cta-final"],   // ordem padrão das seções (?ordem=a,b,c ou DigCapLP.setOrder([...]))
-  oab: "required",            // "required" (padrão desde 26/11: advogado informa número e UF da OAB) | "optional"
   whatsapp: {
     enabled: false,           // WhatsApp DESLIGADO por padrão (CTA único = formulário)
     number: "",               // número oficial, só dígitos com DDI. Vazio = sem WhatsApp.
@@ -44,7 +43,7 @@ var CONFIG = {
 
   // --- Modo staging ---
   internalMode: false,        // true = faixa interna e notas de revisão (.review-note).
-  allowUrlOverrides: true,    // permite ?headline=B&whatsapp=on&passo=2 (só staging; a OAB não tem mais override por URL). Na publicação: false.
+  allowUrlOverrides: true,    // permite ?headline=B&whatsapp=on&passo=2 (só staging). Na publicação: false.
   debugLog: false             // loga o payload no console (contém dados pessoais do teste). Na publicação: false.
 };
 
@@ -96,8 +95,8 @@ var PIPEDRIVE_FIELD_MAP = {
   wbraid_last:      { pipedrive: "wbraid_last",          confirmed: true },
   gbraid_last:      { pipedrive: "gbraid_last",          confirmed: true },
   lp_variant:       { pipedrive: "lp_variant",           confirmed: false },
-  oab:              { pipedrive: "oab_numero",           confirmed: true },
-  oab_uf:           { pipedrive: "oab_uf",               confirmed: true },
+  perfil:           { pipedrive: "perfil",               confirmed: false },
+  tem_advogado:     { pipedrive: "tem_advogado",         confirmed: false },
   processo:         { pipedrive: "numero_processo",      confirmed: true }
 };
 
@@ -139,44 +138,47 @@ var PIPEDRIVE_FIELD_MAP = {
     for (var i = 0; i < numStr.length; i += 7) r = parseInt(String(r) + numStr.slice(i, i + 7), 10) % 97;
     return r;
   }
-  function cnjCheck(raw) {        // "" = válido; senão, o código do erro
+  function cnjCheck(raw) {        // "" = válido; senão, o código do erro (campo obrigatório desde 26/11, noite)
     var v = String(raw || "").trim();
-    if (!v) return "";
+    if (!v) return "vazio";
     if (/[^\d.\-\s]/.test(v)) return "letras";
     var d = digits(v);
     if (d.length < 20) return "curto";
     if (d.length > 20) return "longo";
     var ano = parseInt(d.slice(9, 13), 10), j = parseInt(d.slice(13, 14), 10);
-    if (ano < 1990 || ano > new Date().getFullYear() || j < 1 || j > 9) return "estrutura";
+    // Ano: processos anteriores a 2010 foram renumerados mantendo o ano REAL de ajuizamento (Res. CNJ 65/2008, art. 4º),
+    // então o piso é largo (1900) para não recusar precatório antigo legítimo; o DV continua barrando erro de digitação.
+    if (ano < 1900 || ano > new Date().getFullYear() || j < 1 || j > 9) return "estrutura";
     // DV: NNNNNNN AAAA J TR OOOO DD  mod 97 == 1  (equivale a DD = 98 - (N A J TR O 00 mod 97))
     if (mod97(d.slice(0, 7) + d.slice(9, 20) + d.slice(7, 9)) !== 1) return "dv";
     return "";
   }
-  function oabCheck(num, uf) {    // "" = válido
-    var n = String(num || "").toUpperCase().replace(/[\s.\-\/]/g, "");
-    if (!n && !uf) return "vazio";
-    if (!n) return "numero";
-    if (!/^\d{3,7}[ABEN]?$/.test(n)) return "formato";
-    if (!uf) return "uf";
-    return "";
-  }
   var MSG = {
+    procVazio: "Informe o número do processo, com 20 dígitos (formato 0000000-00.AAAA.J.TR.0000).",
     procLetras: "Use só números: o número do processo não tem letras.",
     procCurto: function (n) { return "Faltam dígitos: o número do processo tem 20 dígitos (faltam " + n + ")."; },
     procLongo: "O número do processo tem 20 dígitos. Confira se colou a mais.",
     procEstrutura: "Número inválido, confira o ano e o segmento (formato 0000000-00.AAAA.J.TR.0000).",
-    procDv: "Número inválido, confira os dígitos.",
-    oabVazio: "Informe o número da OAB e a UF.",
-    oabNumero: "Informe o número da OAB.",
-    oabFormato: "Número da OAB inválido: use de 3 a 7 dígitos (ex.: 123456).",
-    oabUf: "Selecione a UF da OAB."
+    procDv: "Número inválido, confira os dígitos."
   };
+  /* Estado de erro de um campo: classe visual + aria-invalid nos controles (a mensagem é ligada por aria-describedby em initA11y). */
+  function setFieldInvalid(f, on) {
+    if (!f) return;
+    f.classList.toggle("is-invalid", !!on);
+    f.querySelectorAll("input:not([type=hidden]), select, textarea").forEach(function (c) {
+      if (on) c.setAttribute("aria-invalid", "true"); else c.removeAttribute("aria-invalid");
+    });
+  }
   function showFieldError(fieldId, msg) {
     var f = document.getElementById(fieldId);
     if (!f) return;
     var p = f.querySelector(".field-error");
     if (p && msg) p.textContent = msg;
-    f.classList.add("is-invalid");
+    setFieldInvalid(f, true);
+  }
+  function procErrorMsg(err, value) {
+    if (err === "curto") return MSG.procCurto(20 - digits(value).length);
+    return { vazio: MSG.procVazio, letras: MSG.procLetras, longo: MSG.procLongo, estrutura: MSG.procEstrutura, dv: MSG.procDv }[err];
   }
   function emailOk(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v || ""); }
   function getCookie(name) {
@@ -310,12 +312,11 @@ var PIPEDRIVE_FIELD_MAP = {
   /* ---------- Status pages (obrigado/, nao-advogado/): só layout ---------- */
   if (isStatusPage) { return; }
 
-  /* ---------- Headline / OAB / WhatsApp / passo ---------- */
+  /* ---------- Headline / WhatsApp / perfil / passo ---------- */
   var HEADLINES = CONFIG.headlines;
-  var cfgHeadline = CONFIG.headline, cfgOab = CONFIG.oab, cfgWa = CONFIG.whatsapp.enabled;
+  var cfgHeadline = CONFIG.headline, cfgWa = CONFIG.whatsapp.enabled;
   if (CONFIG.allowUrlOverrides) {
     if (params.get("headline")) cfgHeadline = params.get("headline").toUpperCase();
-    // OAB: sem override por URL desde 26/11 (evita desligar a obrigatoriedade com ?oab=optional).
     if (params.get("whatsapp") === "on") cfgWa = true;
     if (params.get("whatsapp") === "off") cfgWa = false;
   }
@@ -338,15 +339,14 @@ var PIPEDRIVE_FIELD_MAP = {
       btn.setAttribute("aria-pressed", String(btn.getAttribute("data-set-headline") === key));
     });
   }
-  function setOab(mode) {
-    if (mode !== "required" && mode !== "optional") return;
-    root.setAttribute("data-oab", mode);
-    var required = mode === "required";
-    var input = document.getElementById("oab"), uf = document.getElementById("oab_uf");
-    if (input) input.required = required;
-    if (uf) uf.required = required;
-    document.querySelectorAll("[data-set-oab]").forEach(function (btn) {
-      btn.setAttribute("aria-pressed", String(btn.getAttribute("data-set-oab") === mode));
+  /* Perfil: "advogado" (padrão) ou "titular" (marcou "Não" em "Você é advogado(a)?").
+     O CSS usa html[data-perfil] para mostrar só as perguntas do perfil (.pf-adv / .pf-tit). */
+  function getPerfil() { return root.getAttribute("data-perfil") === "titular" ? "titular" : "advogado"; }
+  function setPerfil(perfil) {
+    perfil = perfil === "titular" ? "titular" : "advogado";
+    root.setAttribute("data-perfil", perfil);
+    ["field-o-que", "field-o-que-tit", "field-qtd", "field-tem-adv"].forEach(function (id) {
+      setFieldInvalid(document.getElementById(id), false);
     });
   }
   function setWhatsapp(on) {
@@ -376,7 +376,7 @@ var PIPEDRIVE_FIELD_MAP = {
     var label = document.getElementById("progress-label");
     var bar = document.querySelector(".progress .b");
     if (label) {
-      if (step === "1" || step === "blocked") label.textContent = CONFIG.stepLabels.s1;
+      if (step === "1") label.textContent = CONFIG.stepLabels.s1;
       else if (step === "2") label.textContent = CONFIG.stepLabels.s2;
       else label.textContent = "Enviado";
     }
@@ -384,7 +384,6 @@ var PIPEDRIVE_FIELD_MAP = {
     if (opts.focus === false) return;
     var target = null;
     if (step === "2") target = document.getElementById("fase");
-    else if (step === "blocked") target = document.getElementById("step-blocked");
     else if (step === "thanks") target = document.getElementById("step-thanks");
     else if (step === "1") target = document.getElementById("nome");
     if (target) {
@@ -408,26 +407,53 @@ var PIPEDRIVE_FIELD_MAP = {
       }
     });
     var proc = document.getElementById("processo");
-    if (proc) proc.addEventListener("input", function () {
-      // Filtro na digitação/colagem: só dígitos entram; a máscara CNJ é refeita a cada mudança.
-      var hadLetters = /[^\d.\-\s]/.test(proc.value);
-      proc.value = formatCNJ(digits(proc.value).slice(0, 20));
-      // Aviso só quando sobra número incompleto (colar "Processo nº 0001234-..." completo não gera aviso).
-      if (hadLetters && digits(proc.value).length < 20) setTimeout(function () { showFieldError("field-processo", MSG.procLetras); }, 0);
-    });
-    var oabIn = document.getElementById("oab");
-    if (oabIn) oabIn.addEventListener("input", function () {
-      // OAB: só dígitos + 1 letra final opcional (A, B, E ou N, inscrição suplementar etc.).
-      var v = oabIn.value.toUpperCase().replace(/[^0-9ABEN]/g, "");
-      var m = v.match(/^(\d{0,7})([ABEN]?)/);
-      oabIn.value = m ? m[1] + (m[1].length ? m[2] : "") : "";
+    if (proc) {
+      proc.addEventListener("input", function () {
+        // Filtro na digitação/colagem: só dígitos ficam; a máscara CNJ é refeita a cada mudança,
+        // preservando a posição do cursor (conta os dígitos antes do cursor), para editar no meio sem pular para o fim.
+        var raw = proc.value;
+        var hadLetters = /[^\d.\-\s]/.test(raw);
+        var caret = typeof proc.selectionStart === "number" ? proc.selectionStart : raw.length;
+        var before = Math.min(digits(raw.slice(0, caret)).length, 20);
+        var out = formatCNJ(digits(raw).slice(0, 20));
+        if (out !== raw) {
+          proc.value = out;
+          if (document.activeElement === proc && proc.setSelectionRange) {
+            var pos = 0, seen = 0;
+            while (pos < out.length && seen < before) { if (/\d/.test(out.charAt(pos))) seen++; pos++; }
+            try { proc.setSelectionRange(pos, pos); } catch (e) {}
+          }
+        }
+        // Aviso só quando sobra número incompleto (colar "Processo nº 0001234-..." completo não gera aviso).
+        if (hadLetters && digits(proc.value).length < 20) setTimeout(function () { showFieldError("field-processo", MSG.procLetras); }, 0);
+      });
+      // Validação ao sair do campo (não a cada tecla). Campo vazio só acusa no envio.
+      proc.addEventListener("blur", function () {
+        if (!proc.value.trim()) return;
+        var err = cnjCheck(proc.value);
+        if (err) showFieldError("field-processo", procErrorMsg(err, proc.value));
+      });
+    }
+  }
+
+  /* Acessibilidade: liga cada mensagem de erro ao(s) controle(s) do campo via aria-describedby. */
+  function initA11y() {
+    document.querySelectorAll("#form-qualificacao .field").forEach(function (f) {
+      var p = f.querySelector(".field-error");
+      if (!p || !f.id) return;
+      if (!p.id) p.id = f.id + "-erro";
+      f.querySelectorAll("input:not([type=hidden]), select, textarea").forEach(function (c) {
+        var ids = (c.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+        if (ids.indexOf(p.id) === -1) ids.push(p.id);
+        c.setAttribute("aria-describedby", ids.join(" "));
+      });
     });
   }
 
   /* ---------- Validação ---------- */
   function markInvalid(fieldId, on) {
     var f = document.getElementById(fieldId);
-    if (f) f.classList.toggle("is-invalid", !!on);
+    setFieldInvalid(f, on);
     return !!on;
   }
   function focusFirstInvalid(scope) {
@@ -438,45 +464,40 @@ var PIPEDRIVE_FIELD_MAP = {
   }
   function clearOnInput() {
     document.querySelectorAll(".field").forEach(function (f) {
-      var clear = function () { f.classList.remove("is-invalid"); };
+      var clear = function () { setFieldInvalid(f, false); };
       f.addEventListener("input", clear);
       f.addEventListener("change", clear);
     });
   }
 
   function validateStep1() {
-    var requiredOab = root.getAttribute("data-oab") === "required";
-    var oab = document.getElementById("oab"), oabUf = document.getElementById("oab_uf");
     var adv = document.querySelector("input[name='e_advogado']:checked");
-    var oque = document.querySelector("input[name='o_que_antecipar']:checked");
-    // OAB: obrigatória para quem marcou "Sim" (com CONFIG.oab = "required"); se preenchida, o formato é sempre conferido.
-    var oabErr = oabCheck(oab && oab.value, oabUf && oabUf.value);
-    if (oabErr === "vazio" && !(requiredOab && adv && adv.value === "sim")) oabErr = "";
+    var tit = getPerfil() === "titular";
+    var oque = document.querySelector(tit ? "input[name='o_que_antecipar_titular']:checked" : "input[name='o_que_antecipar']:checked");
     var bad = [
       markInvalid("field-nome", !document.getElementById("nome").value.trim()),
       markInvalid("field-email", !emailOk(document.getElementById("email").value.trim())),
       markInvalid("field-telefone", digits(document.getElementById("telefone").value).length < 10),
       markInvalid("field-advogado", !adv),
-      markInvalid("field-oab", !!oabErr),
-      markInvalid("field-o-que", !oque)
+      markInvalid(tit ? "field-o-que-tit" : "field-o-que", !oque)
     ];
-    if (oabErr) showFieldError("field-oab", { vazio: MSG.oabVazio, numero: MSG.oabNumero, formato: MSG.oabFormato, uf: MSG.oabUf }[oabErr]);
     return bad.indexOf(true) === -1;
   }
   function validateStep2() {
     var proc = document.getElementById("processo");
+    var tit = getPerfil() === "titular";
     var qtd = document.querySelector("input[name='qtd_processos']:checked");
+    var temAdv = document.querySelector("input[name='tem_advogado']:checked");
     var fase = document.getElementById("fase");
     var procErr = cnjCheck(proc && proc.value);
     var bad = [
       markInvalid("field-fase", !fase || !fase.value),
-      markInvalid("field-qtd", !qtd),
+      tit ? markInvalid("field-tem-adv", !temAdv) : markInvalid("field-qtd", !qtd),
       markInvalid("field-processo", !!procErr),
       markInvalid("field-consentimento", !document.getElementById("consentimento").checked)
     ];
     if (procErr) {
-      var falta = 20 - digits(proc.value).length;
-      showFieldError("field-processo", { letras: MSG.procLetras, curto: MSG.procCurto(falta), longo: MSG.procLongo, estrutura: MSG.procEstrutura, dv: MSG.procDv }[procErr]);
+      showFieldError("field-processo", procErrorMsg(procErr, proc.value));
     }
     return bad.indexOf(true) === -1;
   }
@@ -487,8 +508,10 @@ var PIPEDRIVE_FIELD_MAP = {
   function buildPayload() {
     fillHiddenFields();
     var adv = document.querySelector("input[name='e_advogado']:checked");
-    var oque = document.querySelector("input[name='o_que_antecipar']:checked");
-    var qtd = document.querySelector("input[name='qtd_processos']:checked");
+    var perfil = getPerfil(), tit = perfil === "titular";
+    var oque = document.querySelector(tit ? "input[name='o_que_antecipar_titular']:checked" : "input[name='o_que_antecipar']:checked");
+    var qtd = tit ? null : document.querySelector("input[name='qtd_processos']:checked");
+    var temAdv = tit ? document.querySelector("input[name='tem_advogado']:checked") : null;
     var hv = root.getAttribute("data-headline") || "A";
     setHidden("headline_variant", hv);
     var p = {
@@ -496,13 +519,13 @@ var PIPEDRIVE_FIELD_MAP = {
       nome: val("nome").trim(),
       email: val("email").trim(),
       telefone: val("telefone"),
+      perfil: perfil,                       // "advogado" (e_advogado = sim) | "titular" (e_advogado = nao)
       e_advogado: adv ? adv.value : "",
-      oab: val("oab").toUpperCase().replace(/[\s.\-\/]/g, ""),
-      oab_uf: val("oab_uf"),
       o_que_antecipar: oque ? oque.value : "",
       fase: val("fase"),
-      qtd_processos: qtd ? qtd.value : "",
-      // passo 2: fase e quantidade (obrigatórias) + número do processo (opcional, normalizado com a máscara CNJ) + consentimento
+      qtd_processos: qtd ? qtd.value : "",  // só advogado
+      tem_advogado: temAdv ? temAdv.value : "", // só titular: sim | nao | nao_sei
+      // passo 2: fase e quantidade (obrigatórias) + número do processo (obrigatório, normalizado com a máscara CNJ) + consentimento
       processo: digits(val("processo")).length === 20 ? formatCNJ(val("processo")) : "",
       consentimento: document.getElementById("consentimento").checked,
       lp_frente: CONFIG.lpFrente,
@@ -580,17 +603,14 @@ var PIPEDRIVE_FIELD_MAP = {
 
   function init() {
     setHeadline(HEADLINES[cfgHeadline] ? cfgHeadline : "A");
-    setOab(cfgOab);
     setWhatsapp(cfgWa);
     fillHiddenFields();
     initMasks();
+    initA11y();
     clearOnInput();
 
     document.querySelectorAll("[data-set-headline]").forEach(function (b) {
       b.addEventListener("click", function () { setHeadline(b.getAttribute("data-set-headline")); });
-    });
-    document.querySelectorAll("[data-set-oab]").forEach(function (b) {
-      b.addEventListener("click", function () { setOab(b.getAttribute("data-set-oab")); });
     });
     document.querySelectorAll("[data-set-whatsapp]").forEach(function (b) {
       b.addEventListener("click", function () { setWhatsapp(b.getAttribute("data-set-whatsapp") === "on"); });
@@ -613,7 +633,7 @@ var PIPEDRIVE_FIELD_MAP = {
     // Passo inicial por URL (staging)
     if (CONFIG.allowUrlOverrides) {
       var passo = params.get("passo");
-      if (passo === "2" || passo === "blocked" || passo === "thanks") setStep(passo, { focus: false });
+      if (passo === "2" || passo === "thanks") setStep(passo, { focus: false });
     }
 
     // form_view: uma vez, quando o formulário entra na tela
@@ -630,28 +650,21 @@ var PIPEDRIVE_FIELD_MAP = {
       io.observe(card);
     } else { fireView(); }
 
-    // Pergunta 1: "Não" -> tela "não é advogado" (sem dados pessoais, sem Pipedrive, nunca conversão)
+    // "Você é advogado(a)?": "Sim" segue o fluxo do advogado; "Não" segue o fluxo do titular do crédito (também gera lead).
     document.querySelectorAll("input[name='e_advogado']").forEach(function (r) {
       r.addEventListener("change", function () {
-        if (r.value === "nao" && r.checked) {
-          setStep("blocked");
-          push({ event: "lead_nao_advogado" });
-        }
+        if (!r.checked) return;
+        setPerfil(r.value === "nao" ? "titular" : "advogado");
+        push({ event: "form_perfil", perfil: getPerfil() });
       });
     });
-    var btnAlt = document.getElementById("btn-alterar-resposta");
-    if (btnAlt) btnAlt.addEventListener("click", function () {
-      var nao = document.querySelector("input[name='e_advogado'][value='nao']");
-      if (nao) nao.checked = false;
-      setStep("1");
-    });
+    var advChecked = document.querySelector("input[name='e_advogado']:checked");
+    setPerfil(advChecked && advChecked.value === "nao" ? "titular" : "advogado");
 
     var btnCont = document.getElementById("btn-continuar");
     if (btnCont) btnCont.addEventListener("click", function () {
-      var adv = document.querySelector("input[name='e_advogado']:checked");
-      if (adv && adv.value === "nao") { setStep("blocked"); return; }
       if (validateStep1()) {
-        push({ event: "form_step1_complete" });
+        push({ event: "form_step1_complete", perfil: getPerfil() });
         setStep("2");
       } else {
         focusFirstInvalid(document.getElementById("step-1"));
@@ -694,6 +707,7 @@ var PIPEDRIVE_FIELD_MAP = {
           is_test: payload.is_test,
           lead_source: CONFIG.leadSource,
           lp_frente: CONFIG.lpFrente,
+          perfil: payload.perfil,
           event_id: payload.event_id           // mesmo event_id do payload (dedup Pixel/CAPI)
         });
         if (digits(payload.processo).length) push({ event: "process_number_filled" });
@@ -741,7 +755,7 @@ var PIPEDRIVE_FIELD_MAP = {
 
   window.DigCapLP = {
     CONFIG: CONFIG, PIPEDRIVE_FIELD_MAP: PIPEDRIVE_FIELD_MAP, HEADLINES: HEADLINES,
-    setOrder: setOrder, setHeadline: setHeadline, cnjCheck: cnjCheck, oabCheck: oabCheck, formatCNJ: formatCNJ, setOab: setOab, setWhatsapp: setWhatsapp, setStep: setStep,
+    setOrder: setOrder, setHeadline: setHeadline, cnjCheck: cnjCheck, formatCNJ: formatCNJ, setPerfil: setPerfil, setWhatsapp: setWhatsapp, setStep: setStep,
     lastPayload: null, lastEnvelope: null, hasConsent: function () { return consentGiven; }
   };
 

@@ -109,15 +109,12 @@ select.ctl{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .choice.consent{align-items:flex-start;font-size:14px;color:var(--ink-2);min-height:0}
 .choice.consent input{margin-top:2px}
 .choice.consent a{color:var(--coral-ink);font-weight:700}
-.oab{display:grid;grid-template-columns:1fr 110px;gap:10px}
 .field-error{display:none;color:var(--error);font-weight:600;font-size:13.5px;margin-top:6px}
 .field.is-invalid .field-error{display:block}
 .field.is-invalid .ctl,.field.is-invalid .choice{border-color:var(--error)}
 .actions{display:flex;flex-direction:column-reverse;gap:12px;margin-top:10px}
 .actions .btn{width:100%}
 .hid{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-html[data-oab="required"] .oab-opt{display:none}
-html[data-oab="optional"] .oab-req{display:none}
 .fstep{display:none}
 html[data-form-step="1"] #step-1,html[data-form-step="2"] #step-2,
 html[data-form-step="blocked"] #step-blocked,html[data-form-step="thanks"] #step-thanks{display:block}
@@ -710,6 +707,11 @@ input,select{caret-color:var(--brand-roxo)}
   .trust-wow .wow-logo{height:20px}
 }
 
-/* Ajustes do formulário (26/11): dica abaixo dos campos OAB e processo */
+/* Ajustes do formulário (26/11): dica abaixo do campo do processo */
 .field-hint{color:var(--ink-3);font-size:13px;line-height:1.4;margin-top:6px}
 .field.is-invalid .field-hint{display:none}
+
+/* Ajustes do formulário (26/11, noite): perguntas por perfil (advogado | titular do crédito) */
+html[data-perfil="titular"] .pf-adv{display:none!important}
+html:not([data-perfil="titular"]) .pf-tit{display:none!important}
+.perfil-note{margin-top:10px;padding:12px 14px;border-radius:var(--r-field);background:var(--soft);color:var(--ink);font-size:14px;line-height:1.45}
