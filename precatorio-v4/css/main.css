@@ -715,3 +715,10 @@ input,select{caret-color:var(--brand-roxo)}
 html[data-perfil="titular"] .pf-adv{display:none!important}
 html:not([data-perfil="titular"]) .pf-tit{display:none!important}
 .perfil-note{margin-top:10px;padding:12px 14px;border-radius:var(--r-field);background:var(--soft);color:var(--ink);font-size:14px;line-height:1.45}
+
+/* Ajustes do formulário (27/11): campo "% de honorários neste processo" (só advogado) */
+.pct{display:flex;align-items:center;gap:10px}
+.pct .ctl{max-width:140px}
+.pct-sym{font-weight:800;font-size:18px;color:var(--navy)}
+html[data-honorarios="obrigatorio"] .hon-opt{display:none}
+html:not([data-honorarios="obrigatorio"]) .hon-req{display:none}

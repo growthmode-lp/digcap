@@ -97,6 +97,7 @@ var PIPEDRIVE_FIELD_MAP = {
   lp_variant:       { pipedrive: "lp_variant",           confirmed: false },
   perfil:           { pipedrive: "perfil",               confirmed: false },
   tem_advogado:     { pipedrive: "tem_advogado",         confirmed: false },
+  percentual_honorarios: { pipedrive: "percentual_honorarios", confirmed: false },
   processo:         { pipedrive: "numero_processo",      confirmed: true }
 };
 
@@ -138,7 +139,7 @@ var PIPEDRIVE_FIELD_MAP = {
     for (var i = 0; i < numStr.length; i += 7) r = parseInt(String(r) + numStr.slice(i, i + 7), 10) % 97;
     return r;
   }
-  function cnjCheck(raw) {        // "" = válido; senão, o código do erro (campo obrigatório desde 26/11, noite)
+  function cnjCheck(raw) {        // "" = válido; senão, o código do erro. Vazio = "vazio" (campo obrigatório desde 26/11, noite)
     var v = String(raw || "").trim();
     if (!v) return "vazio";
     if (/[^\d.\-\s]/.test(v)) return "letras";
@@ -155,6 +156,9 @@ var PIPEDRIVE_FIELD_MAP = {
   }
   var MSG = {
     procVazio: "Informe o número do processo, com 20 dígitos (formato 0000000-00.AAAA.J.TR.0000).",
+    pctVazio: "Informe o % de honorários neste processo, de 1 a 100.",
+    pctLetras: "Use só números inteiros, sem letras nem vírgula (ex.: 30).",
+    pctFaixa: "O % de honorários precisa ser um número inteiro de 1 a 100.",
     procLetras: "Use só números: o número do processo não tem letras.",
     procCurto: function (n) { return "Faltam dígitos: o número do processo tem 20 dígitos (faltam " + n + ")."; },
     procLongo: "O número do processo tem 20 dígitos. Confira se colou a mais.",
@@ -175,6 +179,20 @@ var PIPEDRIVE_FIELD_MAP = {
     var p = f.querySelector(".field-error");
     if (p && msg) p.textContent = msg;
     setFieldInvalid(f, true);
+  }
+  /* % de honorários (27/11): inteiro de 1 a 100. Obrigatório quando o advogado marcou honorários
+     (o_que_antecipar = "honorarios" ou "honorarios_e_credito_cliente"); opcional nas outras opções. */
+  var HONORARIOS_OBRIGATORIO = ["honorarios", "honorarios_e_credito_cliente"];
+  function pctCheck(raw, required) {   // "" = válido; senão, o código do erro
+    var v = String(raw || "").replace(/[\s%]/g, "");
+    if (!v) return required ? "vazio" : "";
+    if (/\D/.test(v)) return "letras";
+    var n = parseInt(v, 10);
+    if (!(n >= 1 && n <= 100)) return "faixa";
+    return "";
+  }
+  function pctErrorMsg(err) {
+    return { vazio: MSG.pctVazio, letras: MSG.pctLetras, faixa: MSG.pctFaixa }[err];
   }
   function procErrorMsg(err, value) {
     if (err === "curto") return MSG.procCurto(20 - digits(value).length);
@@ -342,12 +360,23 @@ var PIPEDRIVE_FIELD_MAP = {
   /* Perfil: "advogado" (padrão) ou "titular" (marcou "Não" em "Você é advogado(a)?").
      O CSS usa html[data-perfil] para mostrar só as perguntas do perfil (.pf-adv / .pf-tit). */
   function getPerfil() { return root.getAttribute("data-perfil") === "titular" ? "titular" : "advogado"; }
+  function honorariosObrigatorio() {
+    var oque = document.querySelector("input[name='o_que_antecipar']:checked");
+    return getPerfil() === "advogado" && !!oque && HONORARIOS_OBRIGATORIO.indexOf(oque.value) !== -1;
+  }
+  function syncHonorarios() {
+    var req = honorariosObrigatorio();
+    root.setAttribute("data-honorarios", req ? "obrigatorio" : "opcional");
+    var el = document.getElementById("percentual_honorarios");
+    if (el) { el.required = req; if (req) el.setAttribute("aria-required", "true"); else el.removeAttribute("aria-required"); }
+  }
   function setPerfil(perfil) {
     perfil = perfil === "titular" ? "titular" : "advogado";
     root.setAttribute("data-perfil", perfil);
-    ["field-o-que", "field-o-que-tit", "field-qtd", "field-tem-adv"].forEach(function (id) {
+    ["field-o-que", "field-o-que-tit", "field-qtd", "field-tem-adv", "field-honorarios"].forEach(function (id) {
       setFieldInvalid(document.getElementById(id), false);
     });
+    syncHonorarios();
   }
   function setWhatsapp(on) {
     root.setAttribute("data-whatsapp", on ? "on" : "off");
@@ -436,6 +465,29 @@ var PIPEDRIVE_FIELD_MAP = {
     }
   }
 
+  function initHonorarios() {
+    var pct = document.getElementById("percentual_honorarios");
+    document.querySelectorAll("input[name='o_que_antecipar']").forEach(function (r) {
+      r.addEventListener("change", syncHonorarios);
+    });
+    syncHonorarios();
+    if (!pct) return;
+    pct.addEventListener("input", function () {
+      // Só dígitos (máx. 3). Vírgula/ponto encerram o número (inteiro); letras são descartadas com aviso.
+      var raw = pct.value;
+      var cut = raw.split(/[,.]/)[0];
+      var bad = /[^\d\s%]/.test(raw);
+      var out = digits(cut).slice(0, 3);
+      if (out !== raw) pct.value = out;
+      if (bad) setTimeout(function () { showFieldError("field-honorarios", MSG.pctLetras); }, 0);
+    });
+    pct.addEventListener("blur", function () {
+      if (!pct.value.trim()) return;      // vazio só acusa no envio
+      var err = pctCheck(pct.value, honorariosObrigatorio());
+      if (err) showFieldError("field-honorarios", pctErrorMsg(err));
+    });
+  }
+
   /* Acessibilidade: liga cada mensagem de erro ao(s) controle(s) do campo via aria-describedby. */
   function initA11y() {
     document.querySelectorAll("#form-qualificacao .field").forEach(function (f) {
@@ -490,12 +542,16 @@ var PIPEDRIVE_FIELD_MAP = {
     var temAdv = document.querySelector("input[name='tem_advogado']:checked");
     var fase = document.getElementById("fase");
     var procErr = cnjCheck(proc && proc.value);
+    var pctEl = document.getElementById("percentual_honorarios");
+    var pctErr = tit ? "" : pctCheck(pctEl && pctEl.value, honorariosObrigatorio());
     var bad = [
       markInvalid("field-fase", !fase || !fase.value),
       tit ? markInvalid("field-tem-adv", !temAdv) : markInvalid("field-qtd", !qtd),
+      markInvalid("field-honorarios", !!pctErr),
       markInvalid("field-processo", !!procErr),
       markInvalid("field-consentimento", !document.getElementById("consentimento").checked)
     ];
+    if (pctErr) showFieldError("field-honorarios", pctErrorMsg(pctErr));
     if (procErr) {
       showFieldError("field-processo", procErrorMsg(procErr, proc.value));
     }
@@ -525,6 +581,8 @@ var PIPEDRIVE_FIELD_MAP = {
       fase: val("fase"),
       qtd_processos: qtd ? qtd.value : "",  // só advogado
       tem_advogado: temAdv ? temAdv.value : "", // só titular: sim | nao | nao_sei
+      percentual_honorarios: (!tit && !pctCheck(val("percentual_honorarios"), false) && val("percentual_honorarios").trim())
+        ? String(parseInt(val("percentual_honorarios").replace(/[\s%]/g, ""), 10)) : "", // só advogado: "1".."100" ou ""
       // passo 2: fase e quantidade (obrigatórias) + número do processo (obrigatório, normalizado com a máscara CNJ) + consentimento
       processo: digits(val("processo")).length === 20 ? formatCNJ(val("processo")) : "",
       consentimento: document.getElementById("consentimento").checked,
@@ -606,6 +664,7 @@ var PIPEDRIVE_FIELD_MAP = {
     setWhatsapp(cfgWa);
     fillHiddenFields();
     initMasks();
+    initHonorarios();
     initA11y();
     clearOnInput();
 
@@ -755,7 +814,7 @@ var PIPEDRIVE_FIELD_MAP = {
 
   window.DigCapLP = {
     CONFIG: CONFIG, PIPEDRIVE_FIELD_MAP: PIPEDRIVE_FIELD_MAP, HEADLINES: HEADLINES,
-    setOrder: setOrder, setHeadline: setHeadline, cnjCheck: cnjCheck, formatCNJ: formatCNJ, setPerfil: setPerfil, setWhatsapp: setWhatsapp, setStep: setStep,
+    setOrder: setOrder, setHeadline: setHeadline, cnjCheck: cnjCheck, pctCheck: pctCheck, formatCNJ: formatCNJ, setPerfil: setPerfil, setWhatsapp: setWhatsapp, setStep: setStep,
     lastPayload: null, lastEnvelope: null, hasConsent: function () { return consentGiven; }
   };
 
