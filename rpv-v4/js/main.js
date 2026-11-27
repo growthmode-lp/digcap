@@ -24,7 +24,7 @@ var CONFIG = {
   // --- Envio do lead (objeto mantém o nome "pipedrive" por compatibilidade): LIGADO, planilha Google (Apps Script) ---
   pipedrive: {
     enabled: true,            // envio ligado: o lead vai para a planilha da DigCap (Apps Script)
-    endpoint: "https://script.google.com/macros/s/AKfycbzURALfSlwxnTNogMBv2-FlG4Dkuw05Zjnzc4C8iVgpPb9CaToLQE1VtR0Ftie8E3So/exec", // URL /exec do Aplicativo da Web (sem token)
+    endpoint: "https://script.google.com/macros/s/AKfycbzHbicPS7GGMHpu7pT758Gm-g0n5J-oa7BxvSB6Hihg0B8Aak-RK3tmIzDTuwrc4qQi/exec", // URL /exec do Aplicativo da Web (sem token)
     timeoutMs: 20000          // Apps Script pode demorar no primeiro acesso (partida a frio)
   },
 
